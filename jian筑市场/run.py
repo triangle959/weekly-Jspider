@@ -3,7 +3,6 @@
 # @Time    : 2019/12/20 10:07
 # @Author  : zjz
 import json
-import os
 from Crypto.Cipher import AES
 import requests
 
@@ -31,7 +30,6 @@ class AESDecrypt:
 
 class JianzhuSpider:
     def __init__(self):
-        self.url = "http://jzsc.mohurd.gov.cn/data/project"
         self.parse_url = "http://jzsc.mohurd.gov.cn/api/webApi/dataservice/query/project/list?projectRegionId=161612111212&pg=0&pgsz=15&total=0"
 
     def _request(self, url):
