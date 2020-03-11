@@ -37,7 +37,7 @@ class JianzhuSpider:
         res = requests.get(url)
         if res.status_code == 200:
             result = AESDecrypt().decrypt(res.text)
-            result = json.loads(result.replace('',""))
+            result = json.loads(result.replace('',"").replace('',""))
             print(result)
         return res.text
 
