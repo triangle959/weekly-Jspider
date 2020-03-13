@@ -4,6 +4,7 @@
 # @Author  : zjz
 import re
 import time
+from urllib import parse
 
 import execjs
 import requests
@@ -23,6 +24,7 @@ def get_js_function(js_path, func_name, *func_args):
         ctx = execjs.compile(js)
         return ctx.call(func_name, *func_args)
 
+
 def format_headers(string) -> dict:
     """
     将在Chrome上复制下来的浏览器UA格式化成字典，以\n为切割点
@@ -38,13 +40,15 @@ def format_headers(string) -> dict:
         else:
             new_headers.update({key_value_list[0]: key_value_list[1]})
     return new_headers
+
+
 headers1 = """
 Accept: */*
 Accept-Encoding: gzip, deflate, br
 Accept-Language: zh-CN,zh;q=0.9
 Cache-Control: no-cache
 Connection: keep-alive
-Cookie: UM_distinctid=170c8979d2483d-046df15f1c2248-4313f6a-1fa400-170c8979d255b5; CNZZDATA1254317176=616657727-1583912404-%7C1583912404
+Cookie: UM_distinctid=170c8979d2483d-046df15f1c2248-4313f6a-1fa400-170c8979d255b5; CNZZDATA1254317176=616657727-1583912404-%7C1584063635
 Host: www.aqistudy.cn
 Pragma: no-cache
 Sec-Fetch-Mode: no-cors
@@ -57,7 +61,7 @@ Accept-Encoding: gzip, deflate, br
 Accept-Language: zh-CN,zh;q=0.9
 Cache-Control: no-cache
 Connection: keep-alive
-Cookie: UM_distinctid=170c8979d2483d-046df15f1c2248-4313f6a-1fa400-170c8979d255b5; CNZZDATA1254317176=616657727-1583912404-%7C1583912404
+Cookie: UM_distinctid=170c8979d2483d-046df15f1c2248-4313f6a-1fa400-170c8979d255b5; CNZZDATA1254317176=616657727-1583912404-%7C1584063635
 Host: www.aqistudy.cn
 Referer: https://www.aqistudy.cn/html/city_realtime.php?v=2.3
 Pragma: no-cache
@@ -67,35 +71,49 @@ User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 """
 headers1 = format_headers(headers1)
 headers2 = format_headers(headers2)
-def get_Common():
-    for i in range(3):
-        url_first = "https://www.aqistudy.cn/html/city_realtime.php?v=2.3"
-        res = requests.get(url=url_first, headers=headers1)
-        js_key = re.search("encrypt_(.*?)\.", res.text).group(1)
-        url = "https://www.aqistudy.cn/js/encrypt_%s.min.js?t=%s" % (js_key, str(int(time.time())))
-        res = requests.get(url=url, headers=headers2)
-        text = re.search("127,'(.*?)'",res.text).group(1)
-        result = text.split('|')
-        if result[124] == 'aqistudyapi':
-            continue
-        return result
 
 
-def make_request(url, parma, parma_key='parma'):
-    res = requests.post(url, data={parma_key: parma})
+def get_Common(city):
+    """
+    获取加密的js文件，以及调用的方法名
+    :return:
+    """
+    url_first = "https://www.aqistudy.cn/html/city_realtime.php?v=2.3"
+    headers1["Cookie"] = headers1["Cookie"] + "; dcity=" + parse.quote("深圳")
+    # 第一步，请求js文件导入到本地util.js内
+    res = requests.get(url=url_first, headers=headers1)
+    js_key = re.search("encrypt_(.*?)\.", res.text).group(1)
+    method_key = re.search("\s*(.*?)\(method", res.text).group(1)
+    url = "https://www.aqistudy.cn/js/encrypt_%s.min.js?t=%s" % (js_key, str(int(time.time())))
+    res = requests.get(url=url, headers=headers2)
+    js = res.text.replace("eval(", 'x=')
+    docjs = execjs.compile(js[:-2])
+    encrype_js = docjs.eval('x')
+    # 获取解密后的js进行替换$ajax
+    param_key = re.search("data:{(.*?):param}", encrype_js).group(1)
+    encrype_js = re.sub('\$\.ajax\({(.*?)}\)', "return param;", encrype_js)
+    decrype_key = re.search("newObject}function\s(.*?)\(data\)", encrype_js).group(1)
+    # 在返回的值里还需插入param的加密方法
+    # encrype_keys = re.findall("(?<=const ).*?(?==)", encrype_js)[6:8]
+    # new_encrypt_js = encrype_js.split("return param")[0] + "param=DES.encrypt(param,%s,%s);return param"%(encrype_keys[0],encrype_keys[1])+  encrype_js.split("return param")[1]
+    with open('util.js', 'a+', encoding='utf-8') as f:
+        f.write("localStorage={data: {},setItem(key, value) {this.data[key] = value;},getItem(key) {return this.data[key]; }};")
+        f.write(encrype_js)
+    return True, method_key, param_key, decrype_key
+
+
+def make_request(url, parma, param_key='parma'):
+    res = requests.post(url, data={param_key: parma}, headers=headers1)
     return res.text
 
 
-
 if __name__ == '__main__':
-    data_obj = {"city": "深圳"}
+    city = "深圳"
+    # 每次运行后将util.js 最后一行补写的js删除
+    # post请求的key 位置有两处 107 和 121
+    status, method_key, param_key, decrype_key = get_Common(city)
+    param = get_js_function('util.js', method_key, "GETDATA", {city: "深圳"}, None, 0.5)
+    print(param)
+    data = make_request('https://www.aqistudy.cn/apinew/aqistudyapi.php', param, param_key)
+    print(get_js_function('util.js', decrype_key, data))
 
-    parma_keys = get_Common()
-    if parma_keys:
-        # parma_keys[124] '9f7be8c7160d51c752e23a722632dd6c'
-        param = get_js_function('AQI.js', 'get_parma', "GETDATA", data_obj, parma_keys[124], parma_keys[102], parma_keys[103])
-        print(param)
-        encryp_data = make_request('https://www.aqistudy.cn/apinew/aqistudyapi.php', param, parma_keys[121])
-        print(encryp_data)
-        data = get_js_function('AQI.js', 'decrypt_data', encryp_data, parma_keys[107], parma_keys[91], parma_keys[103], parma_keys[106])
-        print(data)
