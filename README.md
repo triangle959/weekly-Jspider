@@ -11,3 +11,5 @@
 3. 建筑市场AES加密，详情见run.py
 4. 芒果TV密码转换规则
 5. 12306抢票，添加阿里云滑块的解决手段
+6. glidedsky的js1的sign解密
+7. 站大爷代理的cookie验证acw_sc__v2
